@@ -4,254 +4,220 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CIP Master Scheduler v2.5</title>
-    <!-- React & Babel for browser execution -->
+    <!-- Tailwind CSS for Styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & Babel for Logic -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- Tailwind CSS 4 Runtime -->
-    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-    <!-- Date management -->
-    <script src="https://cdn.jsdelivr.net/npm/date-fns@2.30.0/dist/date-fns.min.js"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&family=JetBrains+Mono:wght@400;500&display=swap');
-        
-        :root {
-            --font-sans: 'Inter', sans-serif;
-            --font-mono: 'JetBrains Mono', monospace;
-        }
-
-        body {
-            font-family: var(--font-sans);
-            background-color: #f8fafc;
-            color: #0f172a;
-            margin: 0;
-        }
-
+        body { font-family: 'Inter', sans-serif; }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-
-        @media print {
-            aside, header { display: none !important; }
-            main { padding: 0 !important; }
-            section { flex: 1 !important; }
-        }
+        @media print { .no-print { display: none; } }
     </style>
 </head>
-<body>
+<body class="bg-slate-50 text-slate-900">
     <div id="root"></div>
 
     <script type="text/babel">
         const { useState, useMemo, useEffect } = React;
-        const { 
-            addMonths, 
-            format, 
-            startOfMonth, 
-            differenceInMonths, 
-            eachMonthOfInterval 
-        } = dateFns;
 
-        // Simple Icon Component for Standalone
-        const Icon = ({ name, className }) => {
-            useEffect(() => {
-                lucide.createIcons();
-            }, [name]);
-            return <i data-lucide={name} className={className}></i>;
+        // Simple Date Helper since we aren't using a heavy library
+        const addMonths = (date, months) => {
+            const d = new Date(date);
+            d.setMonth(d.getMonth() + months);
+            return d;
         };
 
-        const INITIAL_PHASES = [
-            { id: 'initiation', name: 'Project Initiation', duration: 1, icon: 'info', color: 'bg-blue-500' },
-            { id: 'procure-design', name: 'Procure Design Contract', duration: 2, icon: 'file-text', color: 'bg-indigo-500' },
-            { id: 'design', name: 'Design Phase', duration: 6, icon: 'layout-grid', color: 'bg-purple-500' },
-            { id: 'procure-construction', name: 'Procure Construction Contract', duration: 2, icon: 'file-text', color: 'bg-amber-500' },
-            { id: 'construction', name: 'Construction Phase', duration: 12, icon: 'hammer', color: 'bg-orange-500' },
-            { id: 'closeout', name: 'Project Closeout', duration: 2, icon: 'check-circle-2', color: 'bg-emerald-500' },
-        ];
+        const formatMonthYear = (date) => {
+            return new Intl.DateTimeFormat('en-US', { month: 'short', year: '2-digit' }).format(date);
+        };
+
+        const formatFullDate = (date) => {
+            return new Intl.DateTimeFormat('en-US', { month: '2-digit', day: '2-digit', year: '4-digit' }).format(date);
+        };
 
         function App() {
             const [projectName, setProjectName] = useState('New Capital Project');
             const [projectNumber, setProjectNumber] = useState('CIP-2026-001');
             const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
-            const [phases, setPhases] = useState(INITIAL_PHASES);
             
+            // Phase Durations
+            const [durations, setDurations] = useState({
+                initiation: 1,
+                procureDesign: 2,
+                design: 6,
+                procureConst: 2,
+                construction: 12,
+                closeout: 2
+            });
+
+            // Logic Toggles
             const [useRFQ, setUseRFQ] = useState(false);
             const [councilDate, setCouncilDate] = useState('');
             const [useBid, setUseBid] = useState(true);
 
-            const handleDurationChange = (id, value) => {
-                setPhases(prev => prev.map(p => p.id === id ? { ...p, duration: Math.max(0.5, value) } : p));
-            };
+            // Calculate Timeline
+            const schedule = useMemo(() => {
+                const phases = [];
+                let current = new Date(startDate);
+                current.setDate(1); // Start at beginning of month
 
-            const scheduleData = useMemo(() => {
-                const activePhases = [];
-                const init = phases.find(p => p.id === 'initiation');
-                activePhases.push(init);
+                const addPhase = (id, name, duration, color, isSpecial = false) => {
+                    const start = new Date(current);
+                    const end = addMonths(start, duration);
+                    phases.push({ id, name, start, end, duration, color, isSpecial });
+                    current = end;
+                };
 
-                if (useRFQ) {
-                    activePhases.push({ id: 'rfq-selection', name: 'RFQ Selection Process', duration: 3, icon: 'users', color: 'bg-cyan-500' });
+                // 1. Initiation
+                addPhase('init', 'Project Initiation', durations.initiation, 'bg-slate-400');
+                
+                // 2. RFQ
+                if (useRFQ) addPhase('rfq', 'RFQ Selection Process', 3, 'bg-cyan-500', true);
+
+                // 3. Procure Design
+                addPhase('p-design', 'Procure Design Contract', durations.procureDesign, 'bg-slate-400');
+
+                // 4. Council
+                if (councilDate) addPhase('council', 'Council Approval Window', 2, 'bg-rose-500', true);
+
+                // 5. Design
+                addPhase('design', 'Design Phase', durations.design, 'bg-blue-500');
+
+                // 6. Bidding
+                if (useBid) addPhase('bid', 'Public Bidding Process', 6, 'bg-slate-700', true);
+
+                // 7. Procure Construction
+                addPhase('p-const', 'Procure Construction Contract', durations.procureConst, 'bg-slate-400');
+
+                // 8. Construction
+                addPhase('const', 'Construction Phase', durations.construction, 'bg-orange-500');
+
+                // 9. Closeout
+                addPhase('close', 'Project Closeout', durations.closeout, 'bg-slate-800');
+
+                // Generate Month columns for the grid
+                const months = [];
+                const totalMonths = Math.ceil((phases[phases.length-1].end - phases[0].start) / (1000 * 60 * 60 * 24 * 30.44)) + 1;
+                for(let i=0; i < totalMonths; i++) {
+                    months.push(addMonths(phases[0].start, i));
                 }
 
-                activePhases.push(phases.find(p => p.id === 'procure-design'));
-
-                if (councilDate) {
-                    activePhases.push({ id: 'council-approval', name: 'Council Approval (Wait)', duration: 2, icon: 'scale', color: 'bg-rose-500' });
-                }
-
-                activePhases.push(phases.find(p => p.id === 'design'));
-
-                if (useBid) {
-                    activePhases.push({ id: 'bid-process', name: 'Public Bidding Process', duration: 6, icon: 'gavel', color: 'bg-slate-600' });
-                }
-
-                activePhases.push(phases.find(p => p.id === 'procure-construction'));
-                activePhases.push(phases.find(p => p.id === 'construction'));
-                activePhases.push(phases.find(p => p.id === 'closeout'));
-
-                let currentStart = startOfMonth(new Date(startDate + 'T00:00:00'));
-                const timelinePhases = activePhases.map(phase => {
-                    const start = currentStart;
-                    const end = addMonths(start, phase.duration);
-                    currentStart = end;
-                    return { ...phase, startDate: start, endDate: end };
-                });
-
-                const projectEnd = timelinePhases[timelinePhases.length - 1].endDate;
-                const months = eachMonthOfInterval({ start: timelinePhases[0].startDate, end: projectEnd });
-
-                return { timelinePhases, months, projectStart: timelinePhases[0].startDate, projectEnd };
-            }, [startDate, phases, useRFQ, councilDate, useBid]);
+                return { phases, months, start: phases[0].start, end: phases[phases.length-1].end };
+            }, [startDate, durations, useRFQ, councilDate, useBid]);
 
             return (
-                <div className="min-h-screen bg-slate-50 flex flex-col text-slate-900 border-t-4 border-blue-600">
-                    <header className="h-16 bg-slate-900 text-white px-8 flex items-center justify-between shadow-md z-10">
+                <div className="min-h-screen flex flex-col">
+                    {/* Header */}
+                    <header className="h-16 bg-slate-900 text-white px-8 flex items-center justify-between shadow-md z-20 no-print">
                         <div className="flex items-center gap-3">
                             <div className="w-8 h-8 bg-blue-500 rounded-sm flex items-center justify-center font-bold text-lg">C</div>
-                            <h1 className="text-xl font-black tracking-tighter">CIP MASTER SCHEDULER <span className="text-slate-400 font-normal text-xs ml-2 tracking-widest uppercase">v2.5 PRO</span></h1>
+                            <h1 className="text-xl font-semibold tracking-tight">CIP Master Scheduler <span className="text-slate-400 font-normal text-sm ml-2">v2.5</span></h1>
                         </div>
-                        <button onClick={() => window.print()} className="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-xs font-bold uppercase transition-all flex items-center gap-2">
-                            <Icon name="download" className="w-3 h-3" /> Export PDF
-                        </button>
+                        <div className="flex gap-3">
+                            <button onClick={() => window.print()} className="px-4 py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-xs font-medium">Export PDF</button>
+                        </div>
                     </header>
 
-                    <main className="flex-1 flex overflow-hidden">
-                        <aside className="w-80 bg-white border-r border-slate-200 overflow-y-auto p-6 flex flex-col gap-6 custom-scrollbar shadow-xl">
+                    <main className="flex flex-1 overflow-hidden">
+                        {/* Sidebar */}
+                        <aside className="w-80 bg-white border-r border-slate-200 p-6 flex flex-col gap-6 overflow-y-auto no-print">
                             <section>
-                                <h2 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 border-b border-slate-100 pb-2 flex items-center gap-2">
-                                    <Icon name="calendar" className="w-3 h-3 text-blue-500" /> Project Integration
-                                </h2>
-                                <div className="space-y-4">
-                                    <div>
-                                        <label className="text-[9px] font-black text-slate-400 uppercase">Project Name</label>
-                                        <input type="text" value={projectName} onChange={(e) => setProjectName(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded px-3 py-2 text-sm focus:ring-1 focus:ring-blue-500 font-bold outline-none" />
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div>
-                                            <label className="text-[9px] font-black text-slate-400 uppercase">Project #</label>
-                                            <input type="text" value={projectNumber} onChange={(e) => setProjectNumber(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-2 text-xs font-mono outline-none" />
-                                        </div>
-                                        <div>
-                                            <label className="text-[9px] font-black text-slate-400 uppercase">Start Date</label>
-                                            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-2 text-xs font-bold outline-none" />
-                                        </div>
-                                    </div>
+                                <h2 className="text-xs font-bold uppercase text-slate-400 mb-4 tracking-widest">Project Metadata</h2>
+                                <div className="space-y-3">
+                                    <input type="text" value={projectName} onChange={e => setProjectName(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded text-sm font-medium" placeholder="Project Name" />
+                                    <input type="text" value={projectNumber} onChange={e => setProjectNumber(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded text-xs font-mono" placeholder="Project #" />
+                                    <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded text-sm" />
                                 </div>
                             </section>
 
-                            <section className="flex-1">
-                                <h2 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 border-b border-slate-100 pb-2 flex items-center gap-2">
-                                    <Icon name="layout-grid" className="w-3 h-3 text-blue-500" /> Active Workflow
-                                </h2>
-                                <div className="space-y-4">
-                                    <div className="p-3 bg-slate-50 rounded border border-slate-100">
-                                        <div className="flex justify-between items-center mb-2">
-                                            <div className="flex items-center gap-2">
-                                                <input type="checkbox" checked={useRFQ} onChange={() => setUseRFQ(!useRFQ)} className="w-3 h-3 accent-blue-600" />
-                                                <span className="text-[10px] font-bold text-slate-600 uppercase">Use RFQ (+3mo)</span>
+                            <hr />
+
+                            <section className="space-y-4">
+                                <h2 className="text-xs font-bold uppercase text-slate-400 tracking-widest">Workflow</h2>
+                                
+                                {/* RFQ Toggle */}
+                                <div className={`p-3 rounded border ${useRFQ ? 'bg-cyan-50 border-cyan-100' : 'bg-slate-50 border-transparent'}`}>
+                                    <label className="flex items-center justify-between cursor-pointer">
+                                        <span className="text-xs font-bold">RFQ/Selection?</span>
+                                        <input type="checkbox" checked={useRFQ} onChange={() => setUseRFQ(!useRFQ)} className="w-4 h-4" />
+                                    </label>
+                                </div>
+
+                                {/* Council Date */}
+                                <div className={`p-3 rounded border ${councilDate ? 'bg-rose-50 border-rose-100' : 'bg-slate-50 border-transparent'}`}>
+                                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Council Approval</label>
+                                    <input type="date" value={councilDate} onChange={e => setCouncilDate(e.target.value)} className="w-full text-xs p-1 border rounded" />
+                                </div>
+
+                                {/* Bid Toggle */}
+                                <div className={`p-3 rounded border ${useBid ? 'bg-slate-800 text-white' : 'bg-green-50 border-green-100'}`}>
+                                    <label className="flex items-center justify-between cursor-pointer">
+                                        <span className="text-xs font-bold">{useBid ? 'Bidding Required' : 'Using JOC'}</span>
+                                        <input type="checkbox" checked={useBid} onChange={() => setUseBid(!useBid)} className="accent-blue-500" />
+                                    </label>
+                                </div>
+
+                                {/* Durations */}
+                                <div className="space-y-4 pt-2">
+                                    {Object.entries(durations).map(([key, val]) => (
+                                        <div key={key} className="flex flex-col gap-1">
+                                            <div className="flex justify-between text-[10px] font-bold text-slate-500 uppercase">
+                                                <span>{key.replace(/([A-Z])/g, ' $1')}</span>
+                                                <span>{val} mo</span>
                                             </div>
-                                            <input type="number" step="0.5" value={phases[0].duration} onChange={(e) => handleDurationChange('initiation', parseFloat(e.target.value))} className="w-10 border text-center text-xs font-bold rounded" />
+                                            <input type="range" min="1" max="24" value={val} onChange={e => setDurations({...durations, [key]: parseInt(e.target.value)})} className="w-full accent-slate-900" />
                                         </div>
-                                    </div>
-
-                                    <div className="p-3 bg-slate-50 rounded border border-slate-100">
-                                        <label className="text-[9px] font-bold text-slate-400 block mb-1">COUNCIL APPROVAL DATE</label>
-                                        <input type="date" value={councilDate} onChange={(e) => setCouncilDate(e.target.value)} className="w-full text-xs p-1 border rounded mb-2" />
-                                        {councilDate && <p className="text-[8px] text-rose-600 font-black uppercase">+ Adds 2mo Review Gap</p>}
-                                    </div>
-
-                                    <div className="p-3 bg-blue-50/50 rounded border border-blue-100">
-                                        <div className="flex items-center gap-2 mb-2">
-                                            <input type="checkbox" checked={useBid} onChange={() => setUseBid(!useBid)} className="w-3 h-3 accent-blue-600" />
-                                            <span className="text-[10px] font-black text-blue-800 uppercase">Public Bidding (+6mo)</span>
-                                        </div>
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-[10px] text-slate-400 uppercase font-bold">Design Months</span>
-                                            <input type="number" step="1" value={phases[2].duration} onChange={(e) => handleDurationChange('design', parseFloat(e.target.value))} className="w-10 border text-center text-xs font-bold text-blue-700 bg-white" />
-                                        </div>
-                                    </div>
-
-                                    <div className="p-3 bg-orange-50/50 rounded border border-orange-100">
-                                        <div className="flex justify-between items-center mb-2">
-                                            <span className="text-[10px] font-black text-orange-800 uppercase">Construction</span>
-                                            <input type="number" step="1" value={phases[4].duration} onChange={(e) => handleDurationChange('construction', parseFloat(e.target.value))} className="w-10 border text-center text-xs font-bold text-orange-700 bg-white" />
-                                        </div>
-                                    </div>
+                                    ))}
                                 </div>
                             </section>
-
-                            <div className="mt-auto pt-4 border-t border-slate-100">
-                                <div className="flex justify-between items-end mb-1">
-                                    <span className="text-[9px] font-black text-slate-400 uppercase">Total Span</span>
-                                    <span className="text-xl font-black text-slate-900">{differenceInMonths(scheduleData.projectEnd, scheduleData.projectStart)} <span className="text-[10px] text-slate-400">MOS</span></span>
-                                </div>
-                                <div className="w-full bg-slate-100 h-1 rounded-full overflow-hidden">
-                                    <div className="bg-blue-600 h-full" style={{ width: '100%' }}></div>
-                                </div>
-                            </div>
                         </aside>
 
-                        <section className="flex-1 p-10 bg-slate-50/20 overflow-auto">
-                            <div className="max-w-6xl mx-auto space-y-8">
+                        {/* Schedule Content */}
+                        <section className="flex-1 p-8 bg-slate-50 overflow-auto">
+                            <div className="max-w-6xl mx-auto space-y-6">
+                                {/* Title Area */}
                                 <div className="flex justify-between items-end">
                                     <div>
-                                        <h2 className="text-3xl font-black text-slate-900 tracking-tighter leading-none mb-2">{projectName}</h2>
-                                        <span className="text-xs font-mono font-bold text-slate-400 tracking-widest uppercase">{projectNumber} | PREPARED {format(new Date(), 'MM/dd/yyyy')}</span>
+                                        <h1 className="text-3xl font-black text-slate-900 leading-none mb-2">{projectName}</h1>
+                                        <p className="text-xs font-mono text-slate-400 uppercase tracking-widest">{projectNumber}</p>
                                     </div>
                                     <div className="text-right">
-                                        <p className="text-[10px] font-black text-blue-600 uppercase mb-1">Estimated Completion</p>
-                                        <p className="text-2xl font-black text-slate-900 leading-none">{format(scheduleData.projectEnd, 'MMMM yyyy')}</p>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Target Completion</p>
+                                        <p className="text-xl font-bold text-blue-600">{formatMonthYear(schedule.end)}</p>
                                     </div>
                                 </div>
 
-                                <div className="bg-white border border-slate-200 rounded shadow-sm overflow-hidden flex flex-col">
-                                    <div className="flex bg-slate-50 border-b border-slate-200">
-                                        <div className="w-48 p-4 border-r border-slate-200 text-[10px] font-black uppercase text-slate-400 tracking-widest">Phase Hierarchy</div>
-                                        <div className="flex-1 overflow-x-auto no-scrollbar flex cursor-default">
-                                            {scheduleData.months.map(month => (
-                                                <div key={month.getTime()} className="w-20 flex-shrink-0 text-center py-4 border-r border-slate-100 text-[9px] font-black text-slate-400 border-b-2 border-transparent">
-                                                    {format(month, 'MMM')} '{format(month, 'yy')}
+                                {/* Gantt Chart Card */}
+                                <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden flex flex-col">
+                                    <div className="flex bg-slate-50 border-b border-slate-200 overflow-x-auto no-scrollbar">
+                                        <div className="w-48 flex-shrink-0 p-4 border-r border-slate-200 text-[10px] font-black uppercase text-slate-400 tracking-widest">Phase</div>
+                                        <div className="flex flex-1">
+                                            {schedule.months.map((m, i) => (
+                                                <div key={i} className="w-20 flex-shrink-0 p-4 text-[9px] font-bold text-slate-400 border-r border-slate-100 text-center">
+                                                    {formatMonthYear(m)}
                                                 </div>
                                             ))}
                                         </div>
                                     </div>
 
-                                    <div className="relative min-h-[460px] overflow-auto">
-                                        {scheduleData.timelinePhases.map((phase, idx) => {
-                                            const startOffset = differenceInMonths(phase.startDate, scheduleData.projectStart);
+                                    <div className="relative overflow-x-auto">
+                                        {schedule.phases.map((p, i) => {
+                                            const startOffset = Math.ceil((p.start - schedule.start) / (1000 * 60 * 60 * 24 * 30.44));
                                             return (
-                                                <div key={phase.id} className={`flex border-b border-slate-50 h-14 items-center group transition-colors ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50/30'}`}>
-                                                    <div className="w-48 flex-shrink-0 px-4 border-r border-slate-200 h-full flex items-center text-xs font-bold text-slate-700 bg-inherit z-10">
-                                                        {phase.name}
-                                                    </div>
+                                                <div key={i} className={`flex border-b border-slate-50 h-14 items-center ${p.id === 'design' ? 'bg-blue-50/20' : p.id === 'const' ? 'bg-orange-50/20' : ''}`}>
+                                                    <div className="w-48 flex-shrink-0 px-4 text-xs font-bold text-slate-700">{p.name}</div>
                                                     <div className="flex-1 relative h-full">
                                                         <div 
-                                                            className={`absolute top-3 h-8 rounded-sm shadow-sm border flex items-center justify-center text-[10px] font-black text-white ${phase.color} ${phase.id === 'bid-process' ? 'bg-slate-800' : ''}`}
-                                                            style={{ 
-                                                                left: `${startOffset * 80 + 8}px`,
-                                                                width: `${phase.duration * 80 - 16}px`
-                                                            }}
+                                                            className={`absolute top-3 h-8 rounded-sm shadow-sm flex items-center justify-center text-[10px] text-white font-black ${p.color}`}
+                                                            style={{ left: `${startOffset * 80 + 8}px`, width: `${p.duration * 80 - 16}px` }}
                                                         >
-                                                            {phase.duration >= 1 ? `MO ${startOffset + 1}-${Math.round(startOffset + phase.duration)}` : ''}
+                                                            {p.duration >= 1 ? `M${Math.round(startOffset + p.duration)}` : ''}
                                                         </div>
                                                     </div>
                                                 </div>
@@ -260,36 +226,17 @@
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-10 pt-4">
-                                    <div className="bg-white p-6 border border-slate-200 rounded shadow-sm">
-                                        <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4 flex items-center gap-2">
-                                            <Icon name="check-circle" className="w-3 h-3 text-green-500" /> Milestone Audit Table
-                                        </h3>
-                                        <div className="space-y-3 font-mono text-xs">
-                                            <div className="flex justify-between border-b border-slate-100 pb-2">
-                                                <span className="text-slate-500">PROJECT START</span>
-                                                <span className="font-bold">{format(scheduleData.projectStart, 'MM/dd/yyyy')}</span>
-                                            </div>
-                                            <div className="flex justify-between border-b border-slate-100 pb-2">
-                                                <span className="text-slate-500">READY FOR BID</span>
-                                                <span className="font-bold">{format(scheduleData.timelinePhases.find(p => p.id === 'design').endDate, 'MM/dd/yyyy')}</span>
-                                            </div>
-                                            <div className="flex justify-between border-slate-100 border-b-2 pb-2 text-blue-600">
-                                                <span className="font-bold">COMPLETION</span>
-                                                <span className="font-black">{format(scheduleData.projectEnd, 'MM/dd/yyyy')}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <div className="bg-slate-900 p-6 rounded shadow-xl border-l-4 border-blue-500">
-                                        <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">Logic Controls</h3>
-                                        <p className="text-xs text-slate-300 leading-relaxed italic">
-                                            "Critical Path is strictly sequential. This tool accounts for Selection Lead Times (RFQ), 
-                                            Legislative Approvals (Council), and Formal Advertisement Cycles (Low-Bid)."
-                                        </p>
-                                        <div className="mt-4 pt-4 border-t border-slate-800 flex justify-between">
-                                          <span className="text-[9px] font-black text-slate-500">STRATEGY:</span>
-                                          <span className="text-[9px] font-black text-blue-400">{useBid ? 'TRADITIONAL PUBLIC BID' : 'JOC / EXPEDITED'}</span>
-                                        </div>
+                                {/* Milestones Table */}
+                                <div className="grid md:grid-cols-2 gap-8">
+                                    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+                                        <div className="bg-slate-50 px-4 py-3 border-b border-slate-200 text-[10px] font-black uppercase tracking-widest">Key Performance Milestones</div>
+                                        <table className="w-full text-xs">
+                                            <tbody>
+                                                <tr className="border-b border-slate-50"><td className="p-3">Commencement</td><td className="p-3 text-right font-mono">{formatFullDate(schedule.start)}</td></tr>
+                                                <tr className="border-b border-slate-50 bg-blue-50/30"><td className="p-3 font-bold">Construction NTP</td><td className="p-3 text-right font-mono font-bold">{formatFullDate(schedule.phases.find(x => x.id === 'const').start)}</td></tr>
+                                                <tr><td className="p-3 font-black text-slate-900 uppercase">Substantial Completion</td><td className="p-3 text-right font-mono font-black text-blue-600">{formatFullDate(schedule.end)}</td></tr>
+                                            </tbody>
+                                        </table>
                                     </div>
                                 </div>
                             </div>
